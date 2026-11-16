@@ -1,0 +1,63 @@
+{% load static %}
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="description" content="Log in to your Avsar account.">
+  <title>Log in | Avsar</title>
+  <link rel="icon" type="image/png" href="{% static 'pages/avsar-logo.png' %}">
+  <link rel="stylesheet" href="{% static 'pages/base.css' %}">
+  <link rel="stylesheet" href="{% static 'pages/auth.css' %}">
+</head>
+<body class="auth-page">
+  <header class="auth-site-header">
+    <a class="brand" href="{% url 'pages:home' %}">
+      <img src="{% static 'pages/avsar-logo.png' %}" alt="logo">
+      <span>Avsar</span>
+    </a>
+  </header>
+  <main class="auth-layout">
+    <section class="auth-intro" aria-label="About Avsar">
+      <p class="auth-eyebrow">Your next opportunity starts here</p>
+      <h1>Welcome back.</h1>
+      <p class="auth-intro-copy">Sign in to pick up where you left off and keep moving toward what’s next.</p>
+    </section>
+
+    <section class="auth-panel" aria-labelledby="login-title">
+      <div class="auth-switch">
+        <span>New to Avsar?</span>
+        <a href="{% url 'pages:register' %}">Create an account</a>
+      </div>
+
+      <div class="auth-form-wrap">
+        <p class="auth-eyebrow">Good to see you</p>
+        <h2 id="login-title">Log in to your account</h2>
+        <p class="auth-subtitle">Enter your details below to continue.</p>
+
+        <form class="auth-form" method="post">
+          {% csrf_token %}
+          {% if form.non_field_errors %}
+            <div class="form-errors" role="alert">{{ form.non_field_errors }}</div>
+          {% endif %}
+          <label for="{{ form.email.id_for_label }}">Email address</label>
+          {{ form.email }}
+          {% for error in form.email.errors %}<span class="field-error">{{ error }}</span>{% endfor %}
+
+          <label for="{{ form.password.id_for_label }}">Password</label>
+          {{ form.password }}
+          {% for error in form.password.errors %}<span class="field-error">{{ error }}</span>{% endfor %}
+
+          <button class="auth-submit" type="submit">Log in</button>
+        </form>
+
+        <div class="auth-divider"><span>or</span></div>
+        <a class="guest-button" href="{% url 'pages:home' %}">Continue as a guest</a>
+
+        <p class="auth-footer">Your journey, your pace. Explore Avsar whenever you’re ready.</p>
+      </div>
+    </section>
+  </main>
+  {% include 'pages/partials/site_footer.html' %}
+</body>
+</html>

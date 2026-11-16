@@ -1,0 +1,98 @@
+{% load static %}
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="description" content="Explore scholarships, government schemes, and internships with Avsar.">
+  <title>Avsar | Find your next opportunity</title>
+  <link rel="icon" type="image/png" href="{% static 'pages/avsar-logo.png' %}">
+  <link rel="stylesheet" href="{% static 'pages/base.css' %}">
+  <link rel="stylesheet" href="{% static 'pages/home.css' %}">
+</head>
+<body class="home-page" id="top">
+  {% include 'pages/partials/site_header.html' %}
+
+  <main>
+    <section class="category-section" id="categories" aria-labelledby="category-title">
+      <div class="section-heading category-heading">
+        <div>
+          <p class="home-eyebrow">A place to begin</p>
+          <h2 id="category-title">What are you looking for?</h2>
+        </div>
+        <p>Explore opportunities that can help you learn, grow, and get support.</p>
+      </div>
+
+      <div class="category-grid">
+        <a class="category-card category-card-scheme" href="{% url 'pages:schemes' %}">
+          <span class="card-kicker">01 / Support</span>
+          <span class="category-icon" aria-hidden="true">◎</span>
+          <span class="category-card-title">Government schemes</span>
+          <span class="category-card-copy">Explore public programmes and benefits for you and your family.</span>
+          <span class="category-card-action">Explore schemes <span aria-hidden="true">↗</span></span>
+        </a>
+        <a class="category-card category-card-scholarship" href="{% url 'pages:scholarships' %}">
+          <span class="card-kicker">02 / Education</span>
+          <span class="category-icon" aria-hidden="true">✦</span>
+          <span class="category-card-title">Scholarships</span>
+          <span class="category-card-copy">Find financial support that can help you continue your education.</span>
+          <span class="category-card-action">Explore scholarships <span aria-hidden="true">↗</span></span>
+        </a>
+        <a class="category-card category-card-internship" href="{% url 'pages:internships' %}">
+          <span class="card-kicker">03 / Experience</span>
+          <span class="category-icon" aria-hidden="true">↗</span>
+          <span class="category-card-title">Internships</span>
+          <span class="category-card-copy">Discover practical experience and take your first career steps.</span>
+          <span class="category-card-action">Explore internships <span aria-hidden="true">↗</span></span>
+        </a>
+      </div>
+      <p class="category-footnote"><span aria-hidden="true">ⓘ</span> Always confirm eligibility and deadlines with the official provider.</p>
+    </section>
+
+    <section class="steps-section" id="how-it-works" aria-labelledby="steps-title">
+      <div class="steps-intro">
+        <p class="home-eyebrow">Simple by design</p>
+        <h2 id="steps-title">Three steps.<br>A clearer path.</h2>
+        <p>Avsar makes it easier to start exploring opportunities and understand where to check next.</p>
+        <a class="steps-button" href="{% if user.is_authenticated %}{% url 'pages:profile' %}{% else %}{% url 'pages:register' %}{% endif %}">
+          Start here <span aria-hidden="true">→</span>
+        </a>
+      </div>
+      <ol class="steps-list">
+        <li>
+          <span class="step-number">01</span>
+          <div><h3>Tell us what matters to you</h3><p>Create an optional profile to keep relevant details in one place.</p></div>
+          <span class="step-icon" aria-hidden="true">⌕</span>
+        </li>
+        <li>
+          <span class="step-number">02</span>
+          <div><h3>Choose a direction</h3><p>Start with schemes, scholarships, or internships that match your goals.</p></div>
+          <span class="step-icon" aria-hidden="true">✳</span>
+        </li>
+        <li>
+          <span class="step-number">03</span>
+          <div><h3>Check details at the source</h3><p>Review the official provider’s requirements, documents, and deadlines before applying.</p></div>
+          <span class="step-icon" aria-hidden="true">↗</span>
+        </li>
+      </ol>
+    </section>
+
+    <section class="home-hero" aria-labelledby="hero-title">
+      <div class="hero-content">
+        <p class="home-eyebrow">Your opportunity starts here</p>
+        <h1 id="hero-title">Make your next move with a little more clarity.</h1>
+        <p class="hero-copy">Discover scholarships, government schemes, and internships gathered in one place to help you take your next step.</p>
+        <a class="hero-button" href="{% if user.is_authenticated %}{% url 'pages:profile' %}{% else %}{% url 'pages:register' %}{% endif %}">
+          Get started <span aria-hidden="true">↗</span>
+        </a>
+      </div>
+      <div class="hero-note">
+        <span class="hero-note-mark" aria-hidden="true">✦</span>
+        <p>A clearer place to begin exploring what could be next.</p>
+      </div>
+    </section>
+  </main>
+
+  {% include 'pages/partials/site_footer.html' %}
+</body>
+</html>
