@@ -1,0 +1,16 @@
+# Never upload local secrets or the developer database.
+.env
+.env.local
+.env.*.local
+*.sqlite3
+db.sqlite3
+
+# Caches and build output are recreated during the Vercel build.
+**/__pycache__/
+**/*.py[cod]
+staticfiles/
+.venv/
+venv/
+.pytest_cache/
+.ruff_cache/
+.git/

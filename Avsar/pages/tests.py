@@ -162,6 +162,11 @@ class ScholarshipProfileFlowTests(TestCase):
 
 
 class OpportunityCatalogTests(TestCase):
+    def setUp(self):
+        # The shipped catalogue is loaded by a data migration; these tests use
+        # a hand-built catalogue instead.
+        Opportunity.objects.all().delete()
+
     def create_opportunity(self, opportunity_id, category):
         return Opportunity.objects.create(
             id=opportunity_id,
