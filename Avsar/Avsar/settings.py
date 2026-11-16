@@ -10,26 +10,85 @@ For the full list of settings and their values, see
 https://docs.djangoproject.com/en/6.1/ref/settings/
 """
 
-from pathlib import Path
 import os
+import tempfile
+from pathlib import Path
+from urllib.parse import parse_qs, unquote, urlparse
 
+from django.core.exceptions import ImproperlyConfigured
 from dotenv import load_dotenv
 
 # Build paths inside the project like this: BASE_DIR / 'subdir'.
 BASE_DIR = Path(__file__).resolve().parent.parent
-load_dotenv(BASE_DIR / '.env')
+
+# Configuration is read from the environment in production (Vercel injects
+# environment variables into builds and functions). These files only matter on
+# a developer machine; `vercel env pull` writes the root .env.local.
+for env_file in (
+    BASE_DIR / '.env',
+    BASE_DIR / '.env.local',
+    BASE_DIR.parent / '.env',
+    BASE_DIR.parent / '.env.local',
+):
+    load_dotenv(env_file)
 
 
 # Quick-start development settings - unsuitable for production
 # See https://docs.djangoproject.com/en/6.1/howto/deployment/checklist/
 
 # SECURITY WARNING: keep the secret key used in production secret!
-SECRET_KEY = os.environ.get('DJANGO_SECRET_KEY', 'django-insecure-_-hv+_th0ie2m243e$-=j(-=tke)v!+me7x6a108w+ehdqochh')
+SECRET_KEY = os.environ.get('DJANGO_SECRET_KEY', '').strip()
+if not SECRET_KEY:
+    if os.environ.get('VERCEL_ENV') in {'production', 'preview'}:
+        raise ImproperlyConfigured(
+            'DJANGO_SECRET_KEY is not set. Add it under Vercel > Project '
+            'Settings > Environment Variables and redeploy. Generate a value '
+            'with: python -c "import secrets; print(secrets.token_urlsafe(50))"'
+        )
+    # Local development only: a fixed throwaway key keeps sessions stable.
+    SECRET_KEY = 'django-insecure-_-hv+_th0ie2m243e$-=j(-=tke)v!+me7x6a108w+ehdqochh'
+
+
+def environment_flag(name, default=False):
+    """Read a boolean from the environment (\"1/true/yes/on\" enable it)."""
+    value = os.environ.get(name)
+    if value is None:
+        return default
+    return value.strip().lower() in {'1', 'true', 'yes', 'on'}
+
+
+RUNNING_ON_VERCEL = os.environ.get('VERCEL_ENV') in {'production', 'preview'}
 
 # SECURITY WARNING: don't run with debug turned on in production!
-DEBUG = os.environ.get('DEBUG', 'False').lower() == 'true'
+DEBUG = environment_flag('DEBUG')
 
-ALLOWED_HOSTS = os.environ.get('ALLOWED_HOSTS', 'localhost,127.0.0.1').split(',')
+ALLOWED_HOSTS = [
+    host.strip()
+    for host in os.environ.get('ALLOWED_HOSTS', 'localhost,127.0.0.1').split(',')
+    if host.strip()
+]
+
+# Vercel exposes the deployment hostnames as environment variables, so preview
+# and production deployments are reachable without extra configuration.
+VERCEL_HOSTNAMES = tuple(
+    host
+    for host in (
+        os.environ.get('VERCEL_URL', '').strip(),
+        os.environ.get('VERCEL_BRANCH_URL', '').strip(),
+        os.environ.get('VERCEL_PROJECT_PRODUCTION_URL', '').strip(),
+    )
+    if host
+)
+ALLOWED_HOSTS.extend(host for host in VERCEL_HOSTNAMES if host not in ALLOWED_HOSTS)
+ALLOWED_HOSTS.append('.vercel.app')
+
+# HTTPS origins allowed to submit POST requests (login, signup, profile, admin).
+CSRF_TRUSTED_ORIGINS = [
+    origin.strip()
+    for origin in os.environ.get('CSRF_TRUSTED_ORIGINS', '').split(',')
+    if origin.strip()
+]
+CSRF_TRUSTED_ORIGINS.extend(f'https://{host}' for host in VERCEL_HOSTNAMES)
 
 
 # Application definition
@@ -43,6 +102,8 @@ INSTALLED_APPS = [
     'django.contrib.staticfiles',
     'pages.apps.PagesConfig',
 ]
+
+DEFAULT_AUTO_FIELD = 'django.db.models.BigAutoField'
 
 MIDDLEWARE = [
     'django.middleware.security.SecurityMiddleware',
@@ -78,16 +139,74 @@ WSGI_APPLICATION = 'Avsar.wsgi.application'
 # Database
 # https://docs.djangoproject.com/en/6.1/ref/settings/#databases
 
-DATABASES = {
-    'default': {
+
+def _database_from_url(database_url):
+    """Translate a DATABASE_URL (postgres://...) into Django settings."""
+    parsed = urlparse(database_url)
+    if parsed.scheme.startswith('sqlite'):
+        return {
+            'ENGINE': 'django.db.backends.sqlite3',
+            'NAME': unquote(parsed.path) if parsed.path not in ('', '/') else ':memory:',
+        }
+    if parsed.scheme not in {'postgres', 'postgresql', 'pgsql'}:
+        raise ImproperlyConfigured(f'Unsupported DATABASE_URL scheme: {parsed.scheme}')
+
+    options = {}
+    query = parse_qs(parsed.query)
+    for option in ('sslmode', 'connect_timeout', 'application_name'):
+        if query.get(option):
+            options[option] = query[option][0]
+
+    return {
         'ENGINE': 'django.db.backends.postgresql',
-        'NAME': os.environ.get('DB_NAME', 'Avsar'),
-        'USER': os.environ.get('DB_USER', 'postgres'),
-        'PASSWORD': os.environ.get('DB_PASSWORD', ''),
-        'HOST': os.environ.get('DB_HOST', 'localhost'),
-        'PORT': os.environ.get('DB_PORT', '5432'),
+        'NAME': unquote(parsed.path.lstrip('/')),
+        'USER': unquote(parsed.username or ''),
+        'PASSWORD': unquote(parsed.password or ''),
+        'HOST': parsed.hostname or '',
+        'PORT': str(parsed.port or ''),
+        # Serverless functions should not hold connections between invocations.
+        'CONN_MAX_AGE': int(os.environ.get('DB_CONN_MAX_AGE', '0')),
+        'OPTIONS': options,
     }
-}
+
+
+DATABASE_URL = (
+    os.environ.get('DATABASE_URL', '').strip()
+    or os.environ.get('POSTGRES_URL', '').strip()
+)
+
+if DATABASE_URL:
+    # Vercel Postgres/Neon and most managed hosts hand you a single URL.
+    DATABASES = {'default': _database_from_url(DATABASE_URL)}
+elif os.environ.get('DB_HOST', '').strip():
+    DATABASES = {
+        'default': {
+            'ENGINE': 'django.db.backends.postgresql',
+            'NAME': os.environ.get('DB_NAME', 'Avsar'),
+            'USER': os.environ.get('DB_USER', 'postgres'),
+            'PASSWORD': os.environ.get('DB_PASSWORD', ''),
+            'HOST': os.environ['DB_HOST'],
+            'PORT': os.environ.get('DB_PORT', '5432'),
+            'CONN_MAX_AGE': int(os.environ.get('DB_CONN_MAX_AGE', '0')),
+        }
+    }
+else:
+    # Zero-configuration fallback: SQLite. Vercel's filesystem is read-only
+    # except for /tmp, which is per-instance and discarded, so a deployment
+    # without a database is a read-mostly demo. Attach Postgres for real use.
+    sqlite_path = os.environ.get('SQLITE_PATH', '').strip()
+    if not sqlite_path:
+        sqlite_path = str(
+            Path(tempfile.gettempdir()) / 'avsar.sqlite3'
+            if RUNNING_ON_VERCEL
+            else BASE_DIR / 'db.sqlite3'
+        )
+    DATABASES = {
+        'default': {
+            'ENGINE': 'django.db.backends.sqlite3',
+            'NAME': sqlite_path,
+        }
+    }
 
 
 # Password validation
@@ -126,6 +245,9 @@ USE_TZ = True
 
 STATIC_URL = '/static/'
 STATICFILES_DIRS = [os.path.join(BASE_DIR, 'static'),]
+# Vercel runs `collectstatic` during the build when STATIC_ROOT is defined and
+# serves the collected files from its CDN.
+STATIC_ROOT = BASE_DIR / 'staticfiles'
 
 # Email
 # https://docs.djangoproject.com/en/6.1/topics/email/#topic-email-configuration
@@ -133,5 +255,46 @@ STATICFILES_DIRS = [os.path.join(BASE_DIR, 'static'),]
 MAILERS = {
     'default': {
         'BACKEND': 'django.core.mail.backends.console.EmailBackend',
+    },
+}
+
+
+# Reverse-proxy and HTTPS settings
+# https://docs.djangoproject.com/en/6.1/ref/settings/#secure-proxy-ssl-header
+
+# Vercel terminates TLS and forwards the original scheme in this header.
+SECURE_PROXY_SSL_HEADER = ('HTTP_X_FORWARDED_PROTO', 'https')
+USE_X_FORWARDED_HOST = True
+# Vercel's edge redirects HTTP to HTTPS; doing it in Django too is harmless on
+# Vercel and is opt-in everywhere else (tests and local dev run over HTTP).
+SECURE_SSL_REDIRECT = environment_flag('SECURE_SSL_REDIRECT', default=RUNNING_ON_VERCEL)
+SESSION_COOKIE_SECURE = not DEBUG
+CSRF_COOKIE_SECURE = not DEBUG
+
+SECURE_HSTS_SECONDS = int(os.environ.get('SECURE_HSTS_SECONDS', '0'))
+SECURE_HSTS_INCLUDE_SUBDOMAINS = SECURE_HSTS_SECONDS > 0
+SECURE_HSTS_PRELOAD = SECURE_HSTS_SECONDS > 0
+
+
+# Logging
+# https://docs.djangoproject.com/en/6.1/topics/logging/
+# Vercel captures stdout/stderr, so request errors show up in the deployment
+# logs without extra configuration.
+
+LOGGING = {
+    'version': 1,
+    'disable_existing_loggers': False,
+    'formatters': {
+        'simple': {'format': '{levelname} {asctime} {name}: {message}', 'style': '{'},
+    },
+    'handlers': {
+        'console': {
+            'class': 'logging.StreamHandler',
+            'formatter': 'simple',
+        },
+    },
+    'root': {
+        'handlers': ['console'],
+        'level': os.environ.get('LOG_LEVEL', 'INFO'),
     },
 }

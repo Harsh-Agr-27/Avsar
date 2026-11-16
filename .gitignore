@@ -1,0 +1,22 @@
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+.venv/
+venv/
+
+# Environment files (never commit secrets)
+.env
+.env.local
+.env.*.local
+
+# Django
+db.sqlite3
+*.sqlite3
+staticfiles/
+
+# Tooling
+.DS_Store
+.pytest_cache/
+.ruff_cache/
+.vercel/
