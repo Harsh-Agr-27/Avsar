@@ -1,6 +1,0 @@
-<div class="profile-field{% if field.field.widget.input_type == 'checkbox' %} profile-field-checkbox{% endif %}">
-  {{ field.label_tag }}
-  {{ field }}
-  {% if field.help_text %}<small>{{ field.help_text }}</small>{% endif %}
-  {% for error in field.errors %}<span class="field-error">{{ error }}</span>{% endfor %}
-</div>
