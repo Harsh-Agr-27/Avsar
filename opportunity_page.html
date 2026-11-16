@@ -1,0 +1,98 @@
+{% load static %}
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="description" content="{{ description }}">
+  <title>Avsar | {{ title }}</title>
+  <link rel="icon" type="image/png" href="{% static 'pages/avsar-logo.png' %}">
+  <link rel="stylesheet" href="{% static 'pages/base.css' %}">
+  <link rel="stylesheet" href="{% static 'pages/opportunities.css' %}">
+</head>
+<body class="opportunity-page" id="top">
+  {% include 'pages/partials/site_header.html' %}
+
+  <main>
+    <section class="opportunity-page-intro" aria-labelledby="page-title">
+      <p class="home-eyebrow">{{ eyebrow }}</p>
+      <h1 id="page-title">{{ title }}</h1>
+      <p>{{ description }}</p>
+    </section>
+    <section class="opportunity-listing" aria-label="{{ title }} listings">
+      {% if not profile_ready %}
+        <div class="profile-prompt" role="status">
+          <div>
+            <h2>Check which opportunities fit you</h2>
+            {% if is_authenticated %}
+              <p>Complete your profile to see an eligibility estimate for each opportunity.</p>
+              <a class="profile-prompt-link" href="{% url 'pages:profile' %}">Complete your profile</a>
+            {% else %}
+              <p>Sign in and complete your profile to see an eligibility estimate for each opportunity.</p>
+              <a class="profile-prompt-link" href="{% url 'pages:login' %}">Log in to check eligibility</a>
+            {% endif %}
+          </div>
+        </div>
+      {% else %}
+        <p class="eligibility-disclaimer">Eligibility is estimated from the structured criteria listed in Avsar. Confirm requirements and deadlines with the official provider.</p>
+      {% endif %}
+
+      {% if opportunities %}
+        <div class="opportunity-grid">
+          {% for result in opportunities %}
+            {% with opportunity=result.opportunity %}
+              <article class="opportunity-card">
+                <a class="opportunity-image-wrap" href="{% url 'pages:opportunity_detail' opportunity.id %}" aria-label="View details for {{ opportunity.title }}">
+                  {% if opportunity.image %}
+                    <img class="opportunity-image" src="{{ opportunity.image }}" alt="" loading="lazy">
+                  {% else %}
+                    <div class="opportunity-image-placeholder" aria-hidden="true">Avsar</div>
+                  {% endif %}
+                </a>
+                <div class="opportunity-card-content">
+                  <div class="opportunity-card-meta">
+                    <span class="opportunity-type">{{ opportunity.get_opportunity_type_display }}</span>
+                    {% if opportunity.deadline %}<span class="opportunity-deadline">{{ opportunity.deadline }}</span>{% endif %}
+                  </div>
+                  <h2><a class="opportunity-title-link" href="{% url 'pages:opportunity_detail' opportunity.id %}">{{ opportunity.title }}</a></h2>
+                  <p class="opportunity-provider">{{ opportunity.provider }}</p>
+                  <p class="opportunity-description">{{ opportunity.description }}</p>
+                  {% if opportunity.benefit %}<p class="opportunity-benefit">{{ opportunity.benefit }}</p>{% endif %}
+
+                  {% if profile_ready %}
+                    {% if result.eligible %}
+                      <p class="eligibility-status eligibility-status-eligible">Meets the listed eligibility criteria</p>
+                    {% else %}
+                      <p class="eligibility-status eligibility-status-ineligible">Does not meet all listed criteria</p>
+                      {% if result.reasons %}
+                        <ul class="eligibility-reasons">
+                          {% for reason in result.reasons %}<li>{{ reason }}</li>{% endfor %}
+                        </ul>
+                      {% endif %}
+                    {% endif %}
+                  {% else %}
+                    <p class="eligibility-status eligibility-status-incomplete">Complete your profile to check eligibility</p>
+                  {% endif %}
+
+                  <a class="opportunity-link" href="{% url 'pages:opportunity_detail' opportunity.id %}">
+                    View eligibility &amp; details <span aria-hidden="true">→</span>
+                  </a>
+                  {% if opportunity.official_link %}
+                    <a class="opportunity-link" href="{{ opportunity.official_link }}" target="_blank" rel="noopener noreferrer">
+                      Official details <span aria-hidden="true">↗</span>
+                    </a>
+                  {% endif %}
+                </div>
+              </article>
+            {% endwith %}
+          {% endfor %}
+        </div>
+      {% else %}
+        <p class="empty-opportunities">There are no opportunities in this category yet.</p>
+      {% endif %}
+    </section>
+  </main>
+
+  {% include 'pages/partials/site_footer.html' %}
+</body>
+</html>
