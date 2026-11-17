@@ -12,7 +12,39 @@ Deployments with a real database can opt out with ``AUTO_MIGRATE=false`` and run
 import logging
 import os
 
+from django.core.exceptions import ImproperlyConfigured
+
 logger = logging.getLogger(__name__)
+
+MISSING_SECRET_KEY_MESSAGE = (
+    'DJANGO_SECRET_KEY is not set. Add it under Vercel > Project Settings > '
+    'Environment Variables and redeploy. Generate a value with: '
+    'python -c "import secrets; print(secrets.token_urlsafe(50))"'
+)
+
+
+def require_secret_key():
+    """Fail fast when a running deployment has no secret key.
+
+    ``Avsar.settings`` deliberately accepts an empty key because the Vercel
+    build imports it (to locate the entrypoint and to run ``collectstatic``)
+    without secrets. The WSGI and ASGI entrypoints call this instead, so a
+    deployment that actually serves requests cannot start signing sessions and
+    CSRF tokens with nothing.
+    """
+    import importlib
+
+    from django.conf import settings
+
+    # Read the settings module's attribute directly. Reading settings.SECRET_KEY
+    # would trigger Django's own generic "must not be empty" error, and reading
+    # the environment would miss the throwaway key the settings module
+    # substitutes during local development.
+    module = importlib.import_module(settings.SETTINGS_MODULE)
+
+    if not getattr(module, 'SECRET_KEY', '') and not settings.DEBUG:
+        raise ImproperlyConfigured(MISSING_SECRET_KEY_MESSAGE)
+
 
 # Arbitrary constant used to serialise migrations across function instances.
 # Postgres advisory locks are per-database and released with the session.

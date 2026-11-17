@@ -20,6 +20,13 @@ os.environ.setdefault('DJANGO_SETTINGS_MODULE', 'Avsar.settings')
 
 from django.core.wsgi import get_wsgi_application
 
+from Avsar.bootstrap import require_secret_key
+
+# Builds import settings without secrets; a running deployment must not.
+# Check here rather than in settings.py so the Vercel build, which imports
+# settings to find the entrypoint and run collectstatic, keeps working.
+require_secret_key()
+
 application = get_wsgi_application()
 
 # Vercel Functions have no release phase; keep the schema in sync on cold start.

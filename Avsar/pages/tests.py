@@ -1,9 +1,14 @@
+import importlib
 import json
+import subprocess
+import sys
 from datetime import date
 from pathlib import Path
+from unittest import mock
 
 from django.conf import settings
 from django.contrib.auth import get_user_model
+from django.core.exceptions import ImproperlyConfigured
 from django.test import TestCase
 from django.urls import reverse
 
@@ -353,3 +358,47 @@ class VercelServicesConfigTests(TestCase):
             normalise(service_requirements),
             normalise((self.repo_root / 'requirements.txt').read_text()),
         )
+
+    def test_settings_import_without_a_secret_key_so_the_build_can_run(self):
+        """Vercel imports settings during the build, before secrets apply.
+
+        The build reads settings to locate the WSGI entrypoint and to run
+        `collectstatic`. Requiring DJANGO_SECRET_KEY at import time failed the
+        deployment with DJANGO_SETTINGS_FAILED, so the requirement now lives in
+        the request path (Avsar.bootstrap.require_secret_key).
+        """
+        script = (
+            'import os, runpy, sys\n'
+            'os.environ.pop("DJANGO_SECRET_KEY", None)\n'
+            'os.environ["VERCEL_ENV"] = "production"\n'
+            'import django.conf\n'
+            'import Avsar.settings as settings\n'
+            'assert settings.SECRET_KEY == "", settings.SECRET_KEY\n'
+            'assert settings.WSGI_APPLICATION == "Avsar.wsgi.application"\n'
+        )
+        result = subprocess.run(
+            [sys.executable, '-c', script],
+            cwd=str(Path(settings.BASE_DIR)),
+            capture_output=True,
+            text=True,
+        )
+        self.assertEqual(result.returncode, 0, result.stderr)
+
+    def test_entrypoints_require_a_secret_key_before_serving_requests(self):
+        """The check must still fire where it matters: at request time."""
+        settings_module = importlib.import_module('Avsar.settings')
+
+        for module in ('Avsar/Avsar/wsgi.py', 'Avsar/Avsar/asgi.py'):
+            with self.subTest(module=module):
+                source = (self.repo_root / module).read_text()
+                self.assertIn('require_secret_key()', source)
+
+        from Avsar.bootstrap import MISSING_SECRET_KEY_MESSAGE, require_secret_key
+
+        # Simulate a production deployment that never got the variable set.
+        with mock.patch.object(settings_module, 'SECRET_KEY', ''):
+            with mock.patch.object(settings, 'DEBUG', False):
+                with self.assertRaisesMessage(
+                    ImproperlyConfigured, MISSING_SECRET_KEY_MESSAGE
+                ):
+                    require_secret_key()
