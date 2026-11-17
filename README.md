@@ -50,10 +50,12 @@ vercel --prod     # production deployment
 
 Push the repository to GitHub/GitLab/Bitbucket, then **Add New → Project** in
 the Vercel dashboard and import it. Every push to the production branch then
-deploys. No framework, build, or output settings are needed: Vercel detects
-`Avsar/manage.py`, installs the root `requirements.txt`, runs
-`collectstatic`, and routes every request to the WSGI app
-(`Avsar/Avsar/wsgi.py`).
+deploys. No dashboard build or output settings are needed: [`vercel.json`](vercel.json)
+declares a single [Vercel Service](https://vercel.com/docs/services) named
+`avsar` rooted at the `Avsar/` directory. Vercel installs
+[`Avsar/requirements.txt`](Avsar/requirements.txt), detects
+`Avsar/manage.py`, runs `collectstatic`, and routes every request to the WSGI
+app (`Avsar/Avsar/wsgi.py`).
 
 Add `DJANGO_SECRET_KEY` before the first deployment (or immediately after, then
 redeploy) so the build can load settings.
@@ -117,17 +119,63 @@ cd Avsar
 python manage.py test
 ```
 
+Or, to run the services exactly as Vercel does (routing included):
+
+```bash
+vercel dev                        # or: vercel dev --local
+```
+
 ## How the deployment is wired
+
+The project is one Django app, so it deploys as a **single Vercel Service**
+named `avsar` (`vercel.json` → root `Avsar/`). Services mode is used
+rather than a plain project so that additional services (an API, a worker, a
+separate frontend) can be added to this repository later without a new
+project. There is only one service today, so no service-to-service bindings
+are needed.
 
 | Concern | Where it lives |
 | --- | --- |
-| Function config (`maxDuration`) | [`vercel.json`](vercel.json) |
+| Service (`avsar`, root `Avsar/`) and public routing | [`vercel.json`](vercel.json) |
+| Function config (`maxDuration`, service-relative) | [`vercel.json`](vercel.json) |
+| Public path | every request (`/(.*)`) → service `avsar` |
 | Python version (3.12) | [`.python-version`](.python-version) |
-| Dependencies installed by Vercel | [`requirements.txt`](requirements.txt) (root) |
+| Dependencies installed by Vercel | [`Avsar/requirements.txt`](Avsar/requirements.txt) |
 | Entrypoint | `Avsar/Avsar/wsgi.py` (detected via `Avsar/manage.py`) |
 | Startup migrations + catalogue seed | `Avsar/Avsar/bootstrap.py`, `Avsar/pages/migrations/0003_*` |
 | Static files (`/static/`) | `collectstatic` → Vercel CDN, enabled by `STATIC_ROOT` |
 | Secrets and `.sqlite3` files | [`.vercelignore`](.vercelignore) |
+
+Three rules keep the build working, and `VercelServicesConfigTests` enforces them:
+
+- **The service root is `Avsar/`, not the repository root.** Vercel looks for
+  `manage.py` in the service root and its immediate children, so a service
+  rooted at `.` would find the app two levels down and fail with
+  `DJANGO_ENTRYPOINT_NOT_FOUND`.
+- **`Avsar/requirements.txt` is self-contained.** Vercel installs inside the
+  service root and does not resolve `-r ../requirements.txt` includes; that
+  fails the build with `could not parse requirements.txt`. Dependencies are
+  duplicated there — update both files together. (The root
+  [`requirements.txt`](requirements.txt) stays for local `pip install`.)
+- **`functions` paths are relative to the service root**, hence
+  `"Avsar/wsgi.py"` rather than `"Avsar/Avsar/wsgi.py"`.
+
+If you later add a second service and one service needs to call another, declare
+a [binding](https://vercel.com/docs/services/bindings) on the **calling**
+service and read the injected URL in that service's code:
+
+```json
+"bindings": [
+  { "type": "service", "service": "inventory", "format": "url", "env": "INVENTORY_URL" }
+]
+```
+
+```python
+url = f"{os.environ['INVENTORY_URL']}/items/123"
+```
+
+Bindings resolve only in functions at runtime — never during the build, and
+never in middleware.
 
 ## Deploying notes and troubleshooting
 
