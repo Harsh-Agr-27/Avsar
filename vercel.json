@@ -1,8 +1,22 @@
 {
   "$schema": "https://openapi.vercel.sh/vercel.json",
-  "functions": {
-    "Avsar/Avsar/wsgi.py": {
-      "maxDuration": 60
+  "services": {
+    "avsar": {
+      "root": "Avsar",
+      "framework": "django",
+      "functions": {
+        "Avsar/wsgi.py": {
+          "maxDuration": 60
+        }
+      }
     }
-  }
+  },
+  "rewrites": [
+    {
+      "source": "/(.*)",
+      "destination": {
+        "service": "avsar"
+      }
+    }
+  ]
 }

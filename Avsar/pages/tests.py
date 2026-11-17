@@ -1,5 +1,8 @@
+import json
 from datetime import date
+from pathlib import Path
 
+from django.conf import settings
 from django.contrib.auth import get_user_model
 from django.test import TestCase
 from django.urls import reverse
@@ -280,3 +283,73 @@ class OpportunityCatalogTests(TestCase):
         self.assertContains(response, 'Last application date: 30 Nov 2026')
         self.assertContains(response, 'Sign in and complete your profile')
         self.assertNotContains(response, 'Back to top')
+
+
+class VercelServicesConfigTests(TestCase):
+    """Guard the Vercel Services wiring (vercel.json + service requirements).
+
+    `vercel.json` lives at the repository root, one directory above `manage.py`.
+    """
+
+    repo_root = Path(settings.BASE_DIR).parent
+
+    def test_single_django_service_routed_from_the_public_catch_all(self):
+        config = json.loads((self.repo_root / 'vercel.json').read_text())
+
+        self.assertEqual(list(config['services']), ['avsar'])
+        service = config['services']['avsar']
+        # The service root must be the directory holding manage.py: Vercel only
+        # searches manage.py in the service root and its immediate children,
+        # and the repo root would nest the app two levels down.
+        self.assertEqual(service['root'], 'Avsar')
+        self.assertEqual(service['framework'], 'django')
+
+        # The app is a single Django project, so it is the only public entry
+        # point and needs no bindings: there is no other service to call.
+        self.assertEqual(
+            config['rewrites'],
+            [{'source': '/(.*)', 'destination': {'service': 'avsar'}}],
+        )
+        self.assertNotIn('bindings', service)
+
+    def test_build_and_runtime_keys_are_not_set_at_the_top_level(self):
+        config = json.loads((self.repo_root / 'vercel.json').read_text())
+
+        # In services mode these belong to a service, not to the project.
+        for key in (
+            'functions',
+            'installCommand',
+            'buildCommand',
+            'devCommand',
+            'ignoreCommand',
+            'outputDirectory',
+            'framework',
+        ):
+            self.assertNotIn(key, config)
+
+    def test_service_requirements_are_self_contained(self):
+        service_requirements = (
+            self.repo_root / 'Avsar' / 'requirements.txt'
+        ).read_text()
+
+        # Vercel installs inside the service root and cannot resolve includes,
+        # so `-r ../requirements.txt` would break the build.
+        requirement_lines = [
+            line.strip()
+            for line in service_requirements.splitlines()
+            if line.strip() and not line.strip().startswith('#')
+        ]
+        for line in requirement_lines:
+            self.assertNotRegex(line, r'^(-r|--requirement)\b')
+
+        def normalise(text):
+            return {
+                line.strip().lower().replace(' ', '')
+                for line in text.splitlines()
+                if line.strip() and not line.strip().startswith('#')
+            }
+
+        self.assertEqual(
+            normalise(service_requirements),
+            normalise((self.repo_root / 'requirements.txt').read_text()),
+        )
