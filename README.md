@@ -26,7 +26,7 @@ Use Postgres for anything real.
 
 | Variable | Required | Notes |
 | --- | --- | --- |
-| `DJANGO_SECRET_KEY` | **Yes** on Vercel | The deploy fails with a clear error if it is missing. Generate with `python -c "import secrets; print(secrets.token_urlsafe(50))"`. |
+| `DJANGO_SECRET_KEY` | **Yes** on Vercel | Required at request time: the app refuses to serve without it and the function logs a clear error. It is *not* needed to build, so the build succeeds without it. Generate with `python -c "import secrets; print(secrets.token_urlsafe(50))"`. |
 | `DATABASE_URL` | Recommended | Set automatically by the Vercel Postgres integration. `POSTGRES_URL` also works. |
 | `DEBUG` | No | Defaults to `False`. Never enable in production. |
 | `ALLOWED_HOSTS` | Only for custom domains | `*.vercel.app` hosts and the deployment URL are trusted automatically. |
@@ -57,8 +57,11 @@ declares a single [Vercel Service](https://vercel.com/docs/services) named
 `Avsar/manage.py`, runs `collectstatic`, and routes every request to the WSGI
 app (`Avsar/Avsar/wsgi.py`).
 
-Add `DJANGO_SECRET_KEY` before the first deployment (or immediately after, then
-redeploy) so the build can load settings.
+Add `DJANGO_SECRET_KEY` before the first deployment (or immediately after). The
+build itself does not need it — Vercel imports settings during the build to find
+the entrypoint and to run `collectstatic`, so the requirement lives in the
+request path instead. Without it the deployment builds and then returns errors,
+with the reason in the function logs.
 
 ### 4. Create an admin user (optional)
 
@@ -146,7 +149,7 @@ are needed.
 | Static files (`/static/`) | `collectstatic` → Vercel CDN, enabled by `STATIC_ROOT` |
 | Secrets and `.sqlite3` files | [`.vercelignore`](.vercelignore) |
 
-Three rules keep the build working, and `VercelServicesConfigTests` enforces them:
+Four rules keep the build working, and `VercelServicesConfigTests` enforces them:
 
 - **The service root is `Avsar/`, not the repository root.** Vercel looks for
   `manage.py` in the service root and its immediate children, so a service
@@ -159,6 +162,14 @@ Three rules keep the build working, and `VercelServicesConfigTests` enforces the
   [`requirements.txt`](requirements.txt) stays for local `pip install`.)
 - **`functions` paths are relative to the service root**, hence
   `"Avsar/wsgi.py"` rather than `"Avsar/Avsar/wsgi.py"`.
+- **Settings must import without secrets.** The build runs `manage.py` to
+  discover `DJANGO_SETTINGS_MODULE`/`WSGI_APPLICATION` and to run
+  `collectstatic`, and it does so *without* project environment variables.
+  Raising on a missing `DJANGO_SECRET_KEY` at import time therefore failed the
+  build with `DJANGO_SETTINGS_FAILED`. `Avsar.settings` now accepts an empty
+  key and `Avsar.bootstrap.require_secret_key()` (called from `wsgi.py` and
+  `asgi.py`) enforces it when a request is served. Keep new required
+  configuration read lazily for the same reason.
 
 If you later add a second service and one service needs to call another, declare
 a [binding](https://vercel.com/docs/services/bindings) on the **calling**
@@ -181,8 +192,11 @@ never in middleware.
 
 - **`DisallowedHost` / `400` on a custom domain** — add the domain to
   `ALLOWED_HOSTS` and its `https://` origin to `CSRF_TRUSTED_ORIGINS`.
-- **`ImproperlyConfigured: DJANGO_SECRET_KEY is not set`** — add the variable in
-  Vercel project settings (all environments you deploy) and redeploy.
+- **`ImproperlyConfigured: DJANGO_SECRET_KEY is not set`** — the build succeeds
+  without this variable but requests fail: add it in Vercel project settings
+  (all environments you deploy) and redeploy. The check is deliberately
+  deferred from settings import to request time; see
+  [How the deployment is wired](#how-the-deployment-is-wired).
 - **CSRF verification failed** — the origin is missing from
   `CSRF_TRUSTED_ORIGINS`, or requests are reaching Django over plain HTTP.
   Vercel terminates TLS and the app trusts `X-Forwarded-Proto`.

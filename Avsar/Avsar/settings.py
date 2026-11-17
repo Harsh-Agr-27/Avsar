@@ -36,15 +36,17 @@ for env_file in (
 # Quick-start development settings - unsuitable for production
 # See https://docs.djangoproject.com/en/6.1/howto/deployment/checklist/
 
+RUNNING_ON_VERCEL = os.environ.get('VERCEL_ENV') in {'production', 'preview'}
+
 # SECURITY WARNING: keep the secret key used in production secret!
+#
+# This module is imported with incomplete environments, including by the Vercel
+# build, which reads settings to locate the WSGI entrypoint and to run
+# `collectstatic`. Requiring the secret here would fail the build, so it is only
+# required when a request actually runs (Avsar/wsgi.py and Avsar/asgi.py) and
+# DEBUG is off. A deployment that never gets that far still fails loudly.
 SECRET_KEY = os.environ.get('DJANGO_SECRET_KEY', '').strip()
-if not SECRET_KEY:
-    if os.environ.get('VERCEL_ENV') in {'production', 'preview'}:
-        raise ImproperlyConfigured(
-            'DJANGO_SECRET_KEY is not set. Add it under Vercel > Project '
-            'Settings > Environment Variables and redeploy. Generate a value '
-            'with: python -c "import secrets; print(secrets.token_urlsafe(50))"'
-        )
+if not SECRET_KEY and not RUNNING_ON_VERCEL:
     # Local development only: a fixed throwaway key keeps sessions stable.
     SECRET_KEY = 'django-insecure-_-hv+_th0ie2m243e$-=j(-=tke)v!+me7x6a108w+ehdqochh'
 
@@ -56,8 +58,6 @@ def environment_flag(name, default=False):
         return default
     return value.strip().lower() in {'1', 'true', 'yes', 'on'}
 
-
-RUNNING_ON_VERCEL = os.environ.get('VERCEL_ENV') in {'production', 'preview'}
 
 # SECURITY WARNING: don't run with debug turned on in production!
 DEBUG = environment_flag('DEBUG')
