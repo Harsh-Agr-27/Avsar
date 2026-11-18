@@ -1,2 +1,9 @@
-# Canonical dependency list lives at the repository root (Vercel installs from there).
--r ../requirements.txt
+# Dependencies for the `avsar` Vercel service (root: "Avsar").
+# Keep this list identical to the repository-root requirements.txt.
+#
+# This file must be self-contained: Vercel's dependency install runs inside the
+# service root ("Avsar") and does not resolve `-r ../requirements.txt` includes,
+# which fails the build with "could not parse requirements.txt".
+Django>=5.2,<7.0
+psycopg[binary]>=3.2,<4
+python-dotenv>=1.1,<2
